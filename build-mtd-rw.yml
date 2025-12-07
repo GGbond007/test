@@ -1,0 +1,50 @@
+name: build mtd-rw
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu make bc bison flex git xz-utils gzip
+
+      - name: Upload kernel_config.gz
+        uses: actions/upload-artifact@v4
+        if: false
+
+      - name: Get linux-6.6.95
+        run: |
+          git clone --depth 1 --branch v6.6.95 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git linux-6.6.95
+
+      - name: Use provided kernel_config.gz (you must add file as repo file or secret)
+        run: |
+          if [ -f kernel_config.gz ]; then
+            gzip -d -c kernel_config.gz > linux-6.6.95/.config
+          else
+            echo "Missing kernel_config.gz. Add it to repo root for this workflow to work."
+            exit 1
+          fi
+
+      - name: Prepare kernel
+        run: |
+          cd linux-6.6.95
+          yes "" | make olddefconfig || true
+          make modules_prepare -j$(nproc)
+
+      - name: Clone mtd-rw
+        run: git clone https://github.com/s-oy/mtd-rw.git
+
+      - name: Build module
+        run: |
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -C linux-6.6.95 M=$GITHUB_WORKSPACE/mtd-rw ARCH=arm64 modules
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtd-rw
+          path: mtd-rw/mtd-rw.ko
